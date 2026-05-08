@@ -4,7 +4,7 @@ Memory data structures for HyMem.
 This module defines the basic memory units used in the hybrid memory system.
 """
 
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 import uuid
 
@@ -114,48 +114,33 @@ class MemoryNote:
 
 
 class MemorySummary:
-    """
-    Summary of memory content for efficient retrieval.
-    
-    Represents a condensed version of memory content with links to the
-    original memory entries, used for efficient semantic retrieval.
-    
-    Attributes:
-        content: Summary content
-        memory_links: Indices of linked memory entries
-        timestamp: Timestamp of the summary
-    """
-    
+    """Summary of memory content for efficient retrieval."""
+
     def __init__(
         self,
         content: str,
         link: Optional[str] = None,
-        timestamp: Optional[str] = None
+        timestamp: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
     ):
-        """
-        Initialize a MemorySummary instance.
-        
-        Args:
-            content: The summary content
-            links: Optional list of memory indices this summary links to
-            timestamp: Optional timestamp for the summary
-        """
         self.content = content
         self.link = link
         self.timestamp = timestamp
-    
+        self.metadata = metadata or {}
+
     def to_dict(self) -> dict:
         """Convert MemorySummary to dictionary representation."""
         return {
             "content": self.content,
-            "memory_links": self.memory_links,
-            "timestamp": self.timestamp
+            "link": self.link,
+            "timestamp": self.timestamp,
+            "metadata": self.metadata,
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> "MemorySummary":
         """Create MemorySummary from dictionary."""
         return cls(**data)
-    
+
     def __repr__(self) -> str:
-        return f"MemorySummary(links={len(self.memory_links)}, timestamp={self.timestamp})"
+        return f"MemorySummary(link={self.link}, timestamp={self.timestamp})"

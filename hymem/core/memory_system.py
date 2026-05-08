@@ -11,7 +11,7 @@ from typing import List, Dict, Optional, Tuple
 import pickle
 import numpy as np
 from hymem.core.memory import MemoryNote, MemorySummary
-from hymem.core.retriever import SimpleEmbeddingRetriever
+from hymem.core.retriever import SimpleEmbeddingRetriever, LanceDBMemorySummaryRetriever
 from hymem.core.llm_controller import LLMController
 from hymem.prompts.templates import PromptTemplates
 from hymem.utils.helpers import parse_json_response, cal_token
@@ -57,9 +57,7 @@ class AgenticMemorySystem:
             temperature: Temperature for LLM generation
         """
         self.memories: Dict[str, MemoryNote] = {}
-        self.retriever = SimpleEmbeddingRetriever(
-            embed_llm_model, embed_api_key, embed_base_url
-        )
+        self.retriever = LanceDBMemorySummaryRetriever(model_name=embed_llm_model)
         self.llm_controller = LLMController(llm_backend, llm_model, api_key, base_url)
         self.summary_list: List[MemorySummary] = []
         self.temperature = temperature
@@ -154,23 +152,8 @@ class AgenticMemorySystem:
             for su in summary
         ]
 
-        docs = [m.content for m in memsums]
-        embeddings = self.retriever.model.get_text_embedding_batch(docs)
-
-        start_idx = len(self.retriever.corpus)
         self.summary_list.extend(memsums)
-        self.retriever.corpus.extend(docs)
-        embeddings = np.array(embeddings)
-        if self.retriever.embeddings is None:
-            self.retriever.embeddings = embeddings
-        else:
-            self.retriever.embeddings = np.vstack([
-                self.retriever.embeddings,
-                embeddings
-            ])
-
-        for i, doc in enumerate(docs):
-            self.retriever.document_ids[doc] = start_idx + i
+        self.retriever.add_documents([m.to_dict() for m in memsums])
 
         self.memories[note.id] = note
     
