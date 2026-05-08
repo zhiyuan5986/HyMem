@@ -76,9 +76,10 @@ class LanceDBMemorySummaryRetriever:
 
     def __init__(self, model_name: str = 'BAAI/bge-small-en-v1.5', db_path: str = './lancedb', table_name: str = 'memory_summary'):
         import lancedb
+        import torch
         from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
-        self.model = HuggingFaceEmbedding(model_name=model_name)
+        self.model = HuggingFaceEmbedding(model_name=model_name, device="cuda" if torch.cuda.is_available() else "cpu")
         self.corpus: List[str] = []
         self.embeddings: Optional[np.ndarray] = None
         self.document_ids: Dict[str, int] = {}
