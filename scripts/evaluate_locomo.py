@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from collections import defaultdict
 import pickle
+import json
 import gc
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from queue import Queue
@@ -176,10 +177,10 @@ def load_cached_memories(
     if os.path.exists(retriever_cache_file):
         agent.memory_system.retriever.load(retriever_cache_file, retriever_embeddings_file)
     else:
-        logger.info("Rebuilding retriever from cached memories")
-        agent.memory_system.retriever = agent.memory_system.retriever.load_from_local_memory(
-            cached_memories, embed_model, embed_api_key, embed_base_url
-        )
+        logger.info("Rebuilding retriever from cached summaries")
+        agent.memory_system.retriever.add_documents([
+            summary.to_dict() for summary in agent.memory_system.summary_list
+        ])
     
     logger.info(f"Successfully loaded {len(cached_memories)} memories")
     return True
@@ -227,6 +228,29 @@ def save_cached_memories(
     
     logger.info(f"Cached {len(agent.memory_system.memories)} memories")
 
+
+
+
+def save_sample_memory_json(agent: HybridMemAgent, output_dir: str, sample_idx: int) -> None:
+    os.makedirs(output_dir, exist_ok=True)
+    summaries_with_notes = []
+    for summary in agent.memory_system.summary_list:
+        note = agent.memory_system.memories.get(summary.link)
+        summaries_with_notes.append({
+            "summary": summary.to_dict(),
+            "source_memory_note": note.to_dict() if note else None
+        })
+
+    payload = {
+        "sample_idx": sample_idx,
+        "memory_notes": [note.to_dict() for note in agent.memory_system.memories.values()],
+        "memory_summaries": [summary.to_dict() for summary in agent.memory_system.summary_list],
+        "summary_note_pairs": summaries_with_notes
+    }
+
+    out_file = os.path.join(output_dir, f"sample_{sample_idx}.json")
+    with open(out_file, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
 def evaluate_dataset(
     dataset_path: str,
@@ -317,7 +341,10 @@ def evaluate_dataset(
             logger.info(f"Creating new memories for sample {sample_idx}")
             process_conversation(agent, sample, logger)
             save_cached_memories(agent, cache_dir, sample_idx, logger)
-        
+
+        sample_memory_dir = os.path.join(os.path.dirname(__file__), "memory_exports", log_name)
+        save_sample_memory_json(agent, sample_memory_dir, sample_idx)
+
         logger.info(f"Processing sample {sample_idx + 1}/{len(samples)}")
         valid_qas = [
             (i, qa)
