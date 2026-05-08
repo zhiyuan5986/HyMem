@@ -101,8 +101,41 @@ class LanceDBMemorySummaryRetriever:
         self.model = HuggingFaceEmbedding(model_name=model_name, device="cuda" if torch.cuda.is_available() else "cpu")
         self.db = lancedb.connect(db_path)
         self.table_name = table_name
-        self.table = self.db.open_table(table_name) if table_name in self.db.table_names() else self.db.create_table(table_name, data=[])
+        if table_name in self.db.table_names():
+            self.table = self.db.open_table(table_name)
+        else:
+            self.table = self.db.create_table(table_name, data=[], schema=self._get_table_schema())
         self.entries: List[MemorySummary] = self.get_all_entries()
+
+    def _get_table_schema(self):
+        """Build LanceDB schema so empty-table initialization is valid."""
+        import pyarrow as pa
+
+        vector_dim = self._get_vector_dim()
+        return pa.schema([
+            pa.field('vector', pa.list_(pa.float32(), vector_dim)),
+            pa.field('content', pa.string()),
+            pa.field('index', pa.int64()),
+            pa.field('link', pa.string()),
+            pa.field('timestamp', pa.string()),
+            pa.field('metadata', pa.struct([])),
+        ])
+
+    def _get_vector_dim(self) -> int:
+        """Infer embedding dimensionality from model internals or a probe call."""
+        sentence_model = getattr(self.model, '_model', None)
+        if sentence_model is not None:
+            get_dim = getattr(sentence_model, 'get_sentence_embedding_dimension', None)
+            if callable(get_dim):
+                dim = get_dim()
+                if isinstance(dim, int) and dim > 0:
+                    return dim
+
+        probe = self.model.get_text_embedding('schema_probe')
+        if not probe:
+            raise ValueError('Unable to infer embedding dimension for LanceDB schema.')
+        return len(probe)
+
 
     def get_all_entries(self) -> List[MemorySummary]:
         if self.table is None:
