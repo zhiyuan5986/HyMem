@@ -12,9 +12,9 @@ from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
 from collections import defaultdict
-import pickle
 import json
 import gc
+import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from queue import Queue
 from tqdm import tqdm
@@ -140,9 +140,7 @@ def load_cached_memories(
     Returns:
         True if cache loaded successfully, False otherwise
     """
-    memory_cache_file = os.path.join(
-        cache_dir, f"memory_cache_sample_{sample_idx}.pkl"
-    )
+    memory_cache_file = os.path.join(cache_dir, f"memory_cache_sample_{sample_idx}.pkl")
     
     if not os.path.exists(memory_cache_file):
         return False
@@ -154,18 +152,6 @@ def load_cached_memories(
         cached_memories = pickle.load(f)
     agent.memory_system.memories = cached_memories
     
-    # Load summaries
-    summary_cache_file = os.path.join(
-        cache_dir, f"summary_list_cache_sample_{sample_idx}.pkl"
-    )
-    if os.path.exists(summary_cache_file):
-        with open(summary_cache_file, 'rb') as f:
-            cached_summary_list = pickle.load(f)
-        agent.memory_system.summary_list = cached_summary_list
-    else:
-        agent.memory_system.summary_list = []
-        logger.warning("No summary list found in cache")
-    
     # Load retriever
     retriever_cache_file = os.path.join(
         cache_dir, f"retriever_cache_sample_{sample_idx}.pkl"
@@ -173,16 +159,11 @@ def load_cached_memories(
     retriever_embeddings_file = os.path.join(
         cache_dir, f"retriever_cache_embeddings_sample_{sample_idx}.npy"
     )
+    agent.memory_system.retriever.load(retriever_cache_file, retriever_embeddings_file)
+    if hasattr(agent.memory_system.retriever, "get_all_entries"):
+        agent.memory_system.summary_list = agent.memory_system.retriever.get_all_entries()
     
-    if os.path.exists(retriever_cache_file):
-        agent.memory_system.retriever.load(retriever_cache_file, retriever_embeddings_file)
-    else:
-        logger.info("Rebuilding retriever from cached summaries")
-        agent.memory_system.retriever.add_documents([
-            summary.to_dict() for summary in agent.memory_system.summary_list
-        ])
-    
-    logger.info(f"Successfully loaded {len(cached_memories)} memories")
+    logger.info(f"Successfully loaded {len(agent.memory_system.memories)} memories")
     return True
 
 
@@ -204,18 +185,9 @@ def save_cached_memories(
     os.makedirs(cache_dir, exist_ok=True)
     
     # Save memories
-    memory_cache_file = os.path.join(
-        cache_dir, f"memory_cache_sample_{sample_idx}.pkl"
-    )
+    memory_cache_file = os.path.join(cache_dir, f"memory_cache_sample_{sample_idx}.pkl")
     with open(memory_cache_file, 'wb') as f:
         pickle.dump(agent.memory_system.memories, f)
-    
-    # Save summaries
-    summary_cache_file = os.path.join(
-        cache_dir, f"summary_list_cache_sample_{sample_idx}.pkl"
-    )
-    with open(summary_cache_file, 'wb') as f:
-        pickle.dump(agent.memory_system.summary_list, f)
     
     # Save retriever
     retriever_cache_file = os.path.join(

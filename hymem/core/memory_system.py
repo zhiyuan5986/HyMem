@@ -472,48 +472,41 @@ class AgenticMemorySystem:
     def save_memories(self, directory: str) -> None:
         """
         Save memories and summaries to disk.
-        
+
         Args:
             directory: Directory to save files
         """
         os.makedirs(directory, exist_ok=True)
-        
-        # Save memories
+
         memories_file = os.path.join(directory, "memories.pkl")
         with open(memories_file, 'wb') as f:
             pickle.dump(self.memories, f)
-        
-        # Save summaries
-        summaries_file = os.path.join(directory, "summaries.pkl")
-        with open(summaries_file, 'wb') as f:
-            pickle.dump(self.summary_list, f)
-        
-        # Save retriever
+
         retriever_file = os.path.join(directory, "retriever.pkl")
         embeddings_file = os.path.join(directory, "embeddings.npy")
         self.retriever.save(retriever_file, embeddings_file)
-    
+
     def load_memories(self, directory: str) -> None:
         """
         Load memories and summaries from disk.
-        
+
         Args:
             directory: Directory containing saved files
         """
-        # Load memories
         memories_file = os.path.join(directory, "memories.pkl")
         if os.path.exists(memories_file):
             with open(memories_file, 'rb') as f:
                 self.memories = pickle.load(f)
-        
-        # Load summaries
-        summaries_file = os.path.join(directory, "summaries.pkl")
-        if os.path.exists(summaries_file):
-            with open(summaries_file, 'rb') as f:
-                self.summary_list = pickle.load(f)
-        
-        # Load retriever
+
         retriever_file = os.path.join(directory, "retriever.pkl")
         embeddings_file = os.path.join(directory, "embeddings.npy")
-        if os.path.exists(retriever_file) and os.path.exists(embeddings_file):
-            self.retriever.load(retriever_file, embeddings_file)
+        self.retriever.load(retriever_file, embeddings_file)
+
+        if isinstance(self.retriever, LanceDBMemorySummaryRetriever):
+            self.summary_list = self.retriever.get_all_entries()
+        else:
+            summaries_file = os.path.join(directory, "summaries.pkl")
+            if os.path.exists(summaries_file):
+                with open(summaries_file, 'rb') as f:
+                    raw_summaries = pickle.load(f)
+                self.summary_list = [MemorySummary.from_dict(s) for s in raw_summaries]
