@@ -61,7 +61,7 @@ class SimpleEmbeddingRetriever:
         summaries_file = os.path.join(os.path.dirname(retriever_cache_file), "summaries.pkl")
         with open(summaries_file, 'wb') as f:
             pickle.dump(
-                [MemorySummary(content=doc).to_dict() for doc in self.corpus],
+                [MemorySummary(content=doc).model_dump() for doc in self.corpus],
                 f
             )
 

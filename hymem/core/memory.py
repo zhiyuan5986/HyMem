@@ -7,171 +7,66 @@ This module defines the basic memory units used in the hybrid memory system.
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 import uuid
+from pydantic import BaseModel, Field, ConfigDict
 
 
-class MemoryNote:
-    """
-    Basic memory unit with metadata.
-    
-    Represents a single memory entry with content, timestamps, and metadata
-    for tracking importance and retrieval patterns.
-    
-    Attributes:
-        content: The main content of the memory
-        id: Unique identifier for the memory
-        links: Links to related memories or resources
-        importance_score: Score indicating memory importance (default: 1.0)
-        retrieval_count: Number of times this memory has been retrieved
-        timestamp: Creation time of the memory
-        last_accessed: Last access time of the memory
-        category: Category classification of the memory
-    """
-    
-    def __init__(
-        self,
-        content: str,
-        id: Optional[str] = None,
-        links: Optional[List] = None,
-        importance_score: Optional[float] = None,
-        retrieval_count: Optional[int] = None,
-        timestamp: Optional[str] = None,
-        last_accessed: Optional[str] = None,
-        context: Optional[str] = None,
-        evolution_history: Optional[List] = None,
-        category: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        **kwargs
-    ):
-        """
-        Initialize a MemoryNote instance.
-        
-        Args:
-            content: The memory content
-            id: Optional unique identifier (auto-generated if not provided)
-            links: Optional list of related memory links
-            importance_score: Optional importance score
-            retrieval_count: Optional retrieval count
-            timestamp: Optional creation timestamp
-            last_accessed: Optional last accessed timestamp
-            context: Optional context information
-            evolution_history: Optional evolution history
-            category: Optional category
-            tags: Optional list of tags
-            **kwargs: Additional keyword arguments for extensibility
-        """
-        self.content = content
-        self.id = id or str(uuid.uuid4())
-        self.links = links or []
-        self.importance_score = importance_score or 1.0
-        self.retrieval_count = retrieval_count or 0
-        
-        current_time = datetime.now().strftime("%Y%m%d%H%M")
-        self.timestamp = timestamp or current_time
-        self.last_accessed = last_accessed or current_time
-        self.context = context
-        self.evolution_history = evolution_history or []
-        self.category = category or "Uncategorized"
-        self.tags = tags or []
-        
-        # Store any additional kwargs for extensibility
-        self._extra_attrs = kwargs
-    
-    def __getattr__(self, name):
-        """Allow access to extra attributes."""
-        if name.startswith('_'):
-            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
-        return self._extra_attrs.get(name)
-    
+class MemoryNote(BaseModel):
+    """Basic memory unit with metadata."""
+
+    model_config = ConfigDict(extra='allow')
+
+    content: str
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    links: List[Any] = Field(default_factory=list)
+    importance_score: float = 1.0
+    retrieval_count: int = 0
+    timestamp: str = Field(default_factory=lambda: datetime.now().strftime("%Y%m%d%H%M"))
+    last_accessed: str = Field(default_factory=lambda: datetime.now().strftime("%Y%m%d%H%M"))
+    context: Optional[str] = None
+    evolution_history: List[Any] = Field(default_factory=list)
+    category: str = "Uncategorized"
+    tags: List[str] = Field(default_factory=list)
+
     def update_access_time(self) -> None:
-        """Update the last accessed timestamp to current time."""
         self.last_accessed = datetime.now().strftime("%Y%m%d%H%M")
         self.retrieval_count += 1
-    
+
     def to_dict(self) -> dict:
-        """Convert MemoryNote to dictionary representation."""
-        return {
-            "id": self.id,
-            "content": self.content,
-            "links": self.links,
-            "importance_score": self.importance_score,
-            "retrieval_count": self.retrieval_count,
-            "timestamp": self.timestamp,
-            "last_accessed": self.last_accessed,
-            "context": self.context,
-            "evolution_history": self.evolution_history,
-            "category": self.category,
-            "tags": self.tags,
-            **self._extra_attrs
-        }
-    
+        return self.model_dump()
+
     @classmethod
     def from_dict(cls, data: dict) -> "MemoryNote":
-        """Create MemoryNote from dictionary."""
-        return cls(**data)
-    
-    def __repr__(self) -> str:
-        return f"MemoryNote(id={self.id}, category={self.category}, retrieval_count={self.retrieval_count})"
+        return cls.model_validate(data)
 
 
-class MemorySummary:
+class MemorySummary(BaseModel):
     """Summary of memory content for efficient retrieval."""
 
-    def __init__(
-        self,
-        content: str,
-        id: Optional[str] = None,
-        link: Optional[str] = None,
-        timestamp: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ):
-        self.id = id or str(uuid.uuid4())
-        self.content = content
-        self.link = link
-        self.timestamp = timestamp
-        self.metadata = metadata or {}
+    content: str
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    link: Optional[str] = None
+    timestamp: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        """Convert MemorySummary to dictionary representation."""
-        return {
-            "id": self.id,
-            "content": self.content,
-            "link": self.link,
-            "timestamp": self.timestamp,
-            "metadata": self.metadata,
-        }
+        return self.model_dump()
 
     @classmethod
     def from_dict(cls, data: dict) -> "MemorySummary":
-        """Create MemorySummary from dictionary."""
-        return cls(**data)
-
-    def __repr__(self) -> str:
-        return f"MemorySummary(id={self.id}, link={self.link}, timestamp={self.timestamp})"
+        return cls.model_validate(data)
 
 
-class LLMSpan:
+class LLMSpan(BaseModel):
     """Fine-grained LLM span linked to a MemorySummary id."""
 
-    def __init__(
-        self,
-        content: str,
-        id: Optional[str] = None,
-        timestamp: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ):
-        self.id = id or str(uuid.uuid4())
-        self.content = content
-        self.timestamp = timestamp
-        self.metadata = metadata or {}
+    content: str
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    timestamp: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "content": self.content,
-            "timestamp": self.timestamp,
-            "metadata": self.metadata,
-        }
+        return self.model_dump()
 
     @classmethod
     def from_dict(cls, data: dict) -> "LLMSpan":
-        return cls(**data)
+        return cls.model_validate(data)
