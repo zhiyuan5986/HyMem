@@ -13,16 +13,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from argparse import Namespace
 from hymem.core.retriever import LanceDBLLMSpanRetriever, LanceDBMemorySummaryRetriever
-
-# SIMPLEMEM_ROOT = REPO_ROOT / "hymem" / "ref" / "SimpleMem"
-# if str(SIMPLEMEM_ROOT) not in sys.path:
-#     sys.path.insert(0, str(SIMPLEMEM_ROOT))
-
-from hymem.ref.SimpleMem.scripts.filter_extraction_trace_longllmlingua import TopKPPLPromptCompressor
-from hymem.ref.SimpleMem.scripts.filter_extraction_trace_longllmlingua_laquer import align_entry_with_laquer, normalize_spans
-from hymem.ref.SimpleMem.src.consts import HYMEM_TASK
-from hymem.ref.SimpleMem.src.laquer_methods.llm_method import LLMBasedAlignment  # type: ignore
+from hymem.ref.coarse_filter import TopKPPLPromptCompressor
+from hymem.ref.fine_filter import HYMEM_TASK, LLMBasedAlignment, align_entry_with_laquer, normalize_spans
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,6 +35,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--condition-text", type=str, default="")
     parser.add_argument("--condition-placement", choices=["none", "prepend", "append"], default="prepend")
     parser.add_argument("--model", type=str, required=True)
+    parser.add_argument("--openai-base-url", type=str, default="", help="LLM endpoint URL passed via CLI.")
+    parser.add_argument("--openai-api-key", type=str, default="", help="LLM API key passed via CLI.")
     parser.add_argument("--max-trace-items", type=int, default=-1)
     parser.add_argument("--max-entries-per-item", type=int, default=-1)
     parser.add_argument("--fallback-spans-root", type=Path, default=Path("outputs/locomo10_spans_fallback"))
@@ -79,7 +75,13 @@ def main() -> None:
         raise FileNotFoundError(f"No memory exports found under: {args.logs_dir}")
 
     compressor = TopKPPLPromptCompressor(model_name=args.compressor_model_name, device_map=args.compressor_device_map)
-    aligner = LLMBasedAlignment(task=HYMEM_TASK, args=args)
+    if args.openai_base_url:
+        import os
+        os.environ["OPENAI_BASE_URL"] = args.openai_base_url
+    if args.openai_api_key:
+        import os
+        os.environ["OPENAI_API_KEY"] = args.openai_api_key
+    aligner = LLMBasedAlignment(task=HYMEM_TASK, args=Namespace(model=args.model))
 
     summaries: list[dict[str, Any]] = []
     for export_file in exports:
