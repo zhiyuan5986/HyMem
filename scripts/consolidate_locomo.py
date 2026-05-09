@@ -134,10 +134,9 @@ def main() -> None:
             merged = coarse.get("coarse_merged_window", {})
             support_turns = []
             if merged:
-                start_idx = int(merged.get("window_start", 0))
-                end_idx = int(merged.get("window_end", start_idx))
-                for idx in range(start_idx, min(end_idx + 1, len(session_turns))):
-                    support_turns.append({"turn_index": idx, "text": session_turns[idx]})
+                for idx in merged.get("turn_indices", []):
+                    if isinstance(idx, int) and 0 <= idx < len(session_turns):
+                        support_turns.append({"turn_index": idx, "speaker": "Speaker", "text": session_turns[idx]})
 
             alignment_context_turns = list(support_turns)
             if aligner.task == HYMEM_TASK and session_turns:
