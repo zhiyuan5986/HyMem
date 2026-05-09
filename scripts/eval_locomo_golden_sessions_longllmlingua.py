@@ -56,14 +56,31 @@ def parse_session_ids(evidence_list: list[str]) -> list[int]:
     return sorted(ids)
 
 
-def compress_turn_documents(compressor: PromptCompressor, docs: list[str], question: str, ratio: float) -> list[str]:
+def _normalize_for_substring(text: str) -> str:
+    return " ".join((text or "").lower().split())
+
+
+def _is_turn_retained(turn_text: str, compressed_text: str, min_substr_len: int = 24) -> bool:
+    turn_norm = _normalize_for_substring(turn_text)
+    compressed_norm = _normalize_for_substring(compressed_text)
+    if not turn_norm or not compressed_norm:
+        return False
+    if turn_norm in compressed_norm:
+        return True
+    if len(turn_norm) >= min_substr_len:
+        window = turn_norm[:min_substr_len]
+        return window in compressed_norm
+    return False
+
+
+def compress_turn_documents(compressor: PromptCompressor, docs: list[str], question: str, ratio: float) -> tuple[list[str], list[bool]]:
     if ratio >= 0.999 or not docs:
-        return docs
+        return docs, [True] * len(docs)
 
     call_variants = [
-        {"context": docs, "question": question, "rate": ratio},
-        {"context": docs, "instruction": "", "question": question, "rate": ratio},
-        {"context": docs, "instruction": "", "question": question, "compression_ratio": ratio},
+        {"context": docs, "question": question, "rate": ratio, "keep_split": True},
+        {"context": docs, "instruction": "", "question": question, "rate": ratio, "keep_split": True},
+        {"context": docs, "instruction": "", "question": question, "compression_ratio": ratio, "keep_split": True},
     ]
 
     last_error = None
@@ -80,15 +97,23 @@ def compress_turn_documents(compressor: PromptCompressor, docs: list[str], quest
         raise RuntimeError(f"Failed to call compress_prompt with known signatures: {last_error}")
 
     if isinstance(result, dict):
+        # keep_split=True usually keeps document boundaries. Prefer explicit split outputs first.
         for key in ["compressed_context", "compressed_prompt_list", "context", "compressed_prompts"]:
             if key in result and isinstance(result[key], list):
-                return [str(x) for x in result[key]]
+                compressed_docs = [str(x) for x in result[key]]
+                keep_flags = [bool(x and str(x).strip()) for x in compressed_docs]
+                return compressed_docs, keep_flags
         if "compressed_prompt" in result and isinstance(result["compressed_prompt"], str):
-            return [seg for seg in result["compressed_prompt"].split("\n") if seg.strip()]
+            compressed_all = result["compressed_prompt"]
+            keep_flags = [_is_turn_retained(turn, compressed_all) for turn in docs]
+            compressed_docs = [turn if keep else "" for turn, keep in zip(docs, keep_flags)]
+            return compressed_docs, keep_flags
 
     if isinstance(result, list):
-        return [str(x) for x in result]
-    return docs
+        compressed_docs = [str(x) for x in result]
+        keep_flags = [bool(x and str(x).strip()) for x in compressed_docs]
+        return compressed_docs, keep_flags
+    return docs, [True] * len(docs)
 
 
 def build_context(sample, qa, compressor, ratio: float) -> str:
@@ -105,12 +130,16 @@ def build_context(sample, qa, compressor, ratio: float) -> str:
             turn_prefixes.append(f"Speaker {turn.speaker} says : ")
             turn_docs.append(turn.text)
 
-        compressed_docs = compress_turn_documents(compressor, turn_docs, qa.question, ratio)
-        if len(compressed_docs) != len(turn_docs):
+        compressed_docs, keep_flags = compress_turn_documents(compressor, turn_docs, qa.question, ratio)
+        if len(compressed_docs) != len(turn_docs) or len(keep_flags) != len(turn_docs):
             compressed_docs = turn_docs
+            keep_flags = [True] * len(turn_docs)
 
-        for prefix, compressed_content in zip(turn_prefixes, compressed_docs):
-            lines.append(prefix + compressed_content)
+        for prefix, compressed_content, keep in zip(turn_prefixes, compressed_docs, keep_flags):
+            if not keep:
+                continue
+            content = compressed_content if compressed_content.strip() else ""
+            lines.append(prefix + content)
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
 
