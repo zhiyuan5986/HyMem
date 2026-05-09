@@ -52,6 +52,58 @@ def find_memory_exports(logs_dir: Path) -> list[Path]:
     return sorted(logs_dir.glob("sample_*.json"), key=lambda p: int(p.stem.split("_")[-1]))
 
 
+
+
+def resolve_original_dia_id(turn: dict[str, Any]) -> Any:
+    """Resolve per-turn dia_id from turn metadata when present."""
+    metadata = turn.get("metadata", {})
+    if isinstance(metadata, dict):
+        turn_meta = metadata.get("turn_metadata", {})
+        if isinstance(turn_meta, dict):
+            original_dia_id = turn_meta.get("dia_id")
+            if original_dia_id is not None and str(original_dia_id).strip():
+                return original_dia_id
+        original_dia_id = metadata.get("dia_id")
+        if original_dia_id is not None and str(original_dia_id).strip():
+            return original_dia_id
+    if turn.get("dia_id") is not None and str(turn.get("dia_id")).strip():
+        return turn.get("dia_id")
+    if turn.get("dialogue_id") is not None and str(turn.get("dialogue_id")).strip():
+        return turn.get("dialogue_id")
+    turn_index = turn.get("turn_index")
+    return str(turn_index) if turn_index is not None else None
+
+
+def attach_turn_dia_ids_to_spans(
+    spans: list[dict[str, Any]],
+    support_turns: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Backfill dia/dialogue ids from support turns onto each normalized span."""
+    turn_id_map: dict[int, dict[str, Any]] = {}
+    for turn in support_turns:
+        try:
+            turn_idx = int(turn.get("turn_index", -1))
+        except (TypeError, ValueError):
+            continue
+        canonical_dia_id = resolve_original_dia_id(turn)
+        turn_id_map[turn_idx] = {
+            "dia_id": canonical_dia_id,
+            "dialogue_id": canonical_dia_id,
+            "legacy_dialogue_id": turn.get("dialogue_id"),
+        }
+
+    enriched: list[dict[str, Any]] = []
+    for span in spans:
+        out = dict(span)
+        try:
+            turn_idx = int(out.get("turn_index", -1))
+        except (TypeError, ValueError):
+            turn_idx = -1
+        if turn_idx in turn_id_map:
+            out.update(turn_id_map[turn_idx])
+        enriched.append(out)
+    return enriched
+
 def find_sample_db_dir(sample_idx: int, roots: list[Path]) -> Path | None:
     target = f"lancedb_sample_{sample_idx}"
     for root in roots:
@@ -147,6 +199,14 @@ def main() -> None:
             align_result = align_entry_with_laquer(aligner=aligner, entry_text=entry_text, context_turns=alignment_context_turns) if alignment_context_turns else {}
             raw_rows = align_result["results"].to_dict("records") if align_result and "results" in align_result else []
             spans = normalize_spans(rows=raw_rows, context_turns=alignment_context_turns)
+            spans = attach_turn_dia_ids_to_spans(spans=spans, support_turns=alignment_context_turns)
+            support_turn_dia_ids = sorted(
+                {
+                    str(resolve_original_dia_id(turn)).strip()
+                    for turn in alignment_context_turns
+                    if resolve_original_dia_id(turn) is not None and str(resolve_original_dia_id(turn)).strip()
+                }
+            )
             span_text = " ".join([s.get("span_text", "") for s in spans if s.get("span_text")]).strip()
 
             span_retriever.add_documents([{
@@ -159,6 +219,7 @@ def main() -> None:
                     "entry_id": summary_id,
                     "entry_text": entry_text,
                     "support_turns": alignment_context_turns,
+                    "support_turn_dia_ids": support_turn_dia_ids,
                     "llm_spans": spans,
                     "llm_raw_spans": raw_rows,
                     "llm_response": {k: v for k, v in align_result.items() if k != "results"} if align_result else {},
