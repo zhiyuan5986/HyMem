@@ -279,7 +279,7 @@ def evaluate_dataset(
     # Setup cache directory
     cache_dir = os.path.join(
         os.path.dirname(__file__),
-        "cached_memories_advanced_{}_{}".format(model_name, temperature)
+        "cached_memories_advanced_{}_{}_{}".format(model_name, temperature, datetime.now().strftime("%Y%m%d%H%M%S"))
     )
     
     # Statistics

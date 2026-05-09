@@ -1,5 +1,6 @@
 OPENAI_API_KEY=sk-tYfudtgpHIqCKpxWisXgtA 
 OPENAI_BASE_URL=https://models.sjtu.edu.cn/api/v1 
+datetime=$(date +%Y%m%d%H%M%S)
 python scripts/evaluate_locomo.py \
  --dataset ./data/locomo10.json \
  --backend openai \
@@ -12,4 +13,4 @@ python scripts/evaluate_locomo.py \
  --retrieve_k 10 \
  --retrieve_k_rough 30 \
  --temperature 0.5 \
- --log_name locomo_lancedb
+ --log_name locomo_lancedb_${datetime}
