@@ -7,8 +7,9 @@ retrieval and LLM-powered content analysis and question answering.
 
 import os
 import re
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 import pickle
+import time
 import numpy as np
 from hymem.core.memory import MemoryNote, MemorySummary
 from hymem.core.retriever import SimpleEmbeddingRetriever, LanceDBMemorySummaryRetriever
@@ -62,6 +63,11 @@ class AgenticMemorySystem:
         self.llm_controller = LLMController(llm_backend, llm_model, api_key, base_url)
         self.summary_list: List[MemorySummary] = []
         self.temperature = temperature
+        self.last_dynamic_stats: Dict[str, Any] = {}
+        self.last_light_prompt_tokens = 0
+        self.last_deep_retrieval_prompt_tokens = 0
+        self.last_deep_answer_prompt_tokens = 0
+        self.last_analyze_prompt_tokens = 0
     
     def analyze_content(
         self,
@@ -166,59 +172,92 @@ class AgenticMemorySystem:
     ):
         """
         Perform dynamic retrieval to answer a question.
-        
+
         Uses a two-stage retrieval process:
         1. Light retrieval with summary-level search
         2. Deep retrieval with detailed memory search if needed
-        
+
         Args:
             question: Question to answer
             k: Number of results for initial retrieval
             k_rough: Number of results for rough retrieval
-            
+
         Returns:
             Tuple of (answer, retrieved_memory_text)
         """
 
+        start_time = time.perf_counter()
+
         if not self.memories:
+            self.last_dynamic_stats = {
+                "retrieve_tokens": 0,
+                "answer_tokens": 0,
+                "total_tokens": 0,
+                "latency_seconds": time.perf_counter() - start_time,
+                "stage": "empty"
+            }
             return "", ""
+
         answer = ""
         memory_buffer = ""
         max_iterations = 1
-        
+        retrieve_tokens = 0
+        answer_tokens = 0
+        stage = "light"
+
         for _ in range(max_iterations):
-            # Initial retrieval
             initial_indices = self.retriever.search(question, k)
             summary_text = self._format_summaries(initial_indices) + memory_buffer
-            
-            # Light memory retrieval
+
             tag, answer = self.retrieval_light_memory(question, summary_text)
+            light_prompt_tokens = self.last_light_prompt_tokens
             retrieved_memory = summary_text
-            # If light retrieval insufficient, do deep retrieval
+
             if tag == 2:
+                stage = "deep"
+                retrieve_tokens += light_prompt_tokens
                 expanded_indices = self.retriever.search(question, k_rough)
                 memory_groups = self._group_summaries(expanded_indices, group_size=50)
                 deep_selected_indices = []
-                
+
                 for group in memory_groups:
                     group_indices = self.retrieval_deep_memory(question, group)
+                    deep_prompt_tokens = self.last_deep_retrieval_prompt_tokens
+                    retrieve_tokens += deep_prompt_tokens
                     deep_selected_indices.extend(group_indices)
-                
+
                 final_indices = [expanded_indices[i] for i in deep_selected_indices if i < len(expanded_indices)]
                 retrieved_memory = self._build_memory_text(final_indices) + memory_buffer
+
                 answer = self.answer_deep_memory(question, retrieved_memory)
+                deep_answer_tokens = self.last_deep_answer_prompt_tokens
+                answer_tokens += deep_answer_tokens
+            else:
+                answer_tokens += light_prompt_tokens
 
             memory_buffer = answer
-            
-            # Analyze answer quality
             should_accept, revised_question = self.analyze_answer(question, answer)
+            answer_tokens += self.last_analyze_prompt_tokens
             if should_accept == 1:
+                self.last_dynamic_stats = {
+                    "retrieve_tokens": retrieve_tokens,
+                    "answer_tokens": answer_tokens,
+                    "total_tokens": retrieve_tokens + answer_tokens,
+                    "latency_seconds": time.perf_counter() - start_time,
+                    "stage": stage
+                }
                 return answer, retrieved_memory
-            else:
-                question = revised_question
-        
+            question = revised_question
+
+        self.last_dynamic_stats = {
+            "retrieve_tokens": retrieve_tokens,
+            "answer_tokens": answer_tokens,
+            "total_tokens": retrieve_tokens + answer_tokens,
+            "latency_seconds": time.perf_counter() - start_time,
+            "stage": stage
+        }
         return answer, retrieved_memory
-    
+
     def _format_summaries(self, indices) -> str:
         """Format summaries for display."""
         summary_parts = []
@@ -283,6 +322,7 @@ class AgenticMemorySystem:
         prompt_memory = PromptTemplates.ANSWER_DEEP
         prompt_memory += "Here is the question: " + question + "\n"
         prompt_memory += " Here is the memory: " + current_memory + "\n"
+        self.last_deep_answer_prompt_tokens = cal_token(prompt_memory)
         
         # Get LLM response
         response = self.llm_controller.llm.get_completion(
@@ -333,6 +373,7 @@ class AgenticMemorySystem:
         prompt = PromptTemplates.ANALYZE_ANSWER
         prompt += "Here is the question: " + question + "\n"
         prompt += " Here is the answer: " + answer + "\n"
+        self.last_analyze_prompt_tokens = cal_token(prompt)
         
         # Get LLM response
         response = self.llm_controller.llm.get_completion(
@@ -386,6 +427,7 @@ class AgenticMemorySystem:
         prompt_memory = PromptTemplates.ANSWER_LIGHT
         prompt_memory += "Here is the question: " + question + "\n"
         prompt_memory += " Here is the memory: " + memory_list_str + "\n"
+        self.last_light_prompt_tokens = cal_token(prompt_memory)
         
         # Get LLM response
         response = self.llm_controller.llm.get_completion(
@@ -438,6 +480,7 @@ class AgenticMemorySystem:
         prompt_memory = PromptTemplates.RETRIEVER
         prompt_memory += "Below is the current question to answer: " + question + "\n"
         prompt_memory += "Below is the memory content indices:\n " + current_memory_str + "\n"
+        self.last_deep_retrieval_prompt_tokens = cal_token(prompt_memory)
         
         # Get LLM response
         response = self.llm_controller.llm.get_completion(

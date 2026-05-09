@@ -141,6 +141,10 @@ class HybridMemAgent:
             k_rough=self.retrieve_k_rough
         )
     
+    def get_last_retrieval_stats(self):
+        """Get token and latency stats from the last dynamic retrieval call."""
+        return self.memory_system.last_dynamic_stats
+
     def clear_memories(self) -> None:
         """Clear all memories from the agent."""
         self.memory_system.memories.clear()
