@@ -57,6 +57,9 @@ class LLMBasedAlignment:
         elif self.task == LFQA_TASK:
             few_shot = lfqa_few_shot
             few_shot_documents = lfqa_few_shot_documents
+        elif self.task == HYMEM_TASK:
+            few_shot = hymem_few_shot
+            few_shot_documents = hymem_few_shot_documents
         else:
             raise ValueError(f'unexpected task {self.task}')
         

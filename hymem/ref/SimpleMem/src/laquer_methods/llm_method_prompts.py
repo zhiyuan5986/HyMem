@@ -103,3 +103,70 @@ lfqa_few_shot_documents = {
         "https://www.aidoc.com/blog/artificial-intelligence-medical-diagnosis/": "Artificial intelligence (AI) has become synonymous with support and efficiency in the medical community. From a technology viewed with suspicion as claims touted it the replacement for the medical professional, AI has evolved to become the second pair of eyes that never need to sleep. Artificial intelligence in medical diagnosis and healthcare provides overworked medical practitioners and facilities with reliable support, helping to minimize workload pressure while maximizing practitioner efficiency.\nArtificial intelligence in medical diagnosis helps with medical decision making, management, automation, admin, and workflows. It can be used to diagnose cancer, triage critical findings in medical imaging, flag acute abnormalities, provide radiologists with help in prioritizing life threatening cases, diagnose cardiac arrhythmias, predict stroke outcomes , and help with the management of chronic diseases. AI is a rich realm of data, algorithms, analytics, deep learning, neural networks and insights that\u2019s constantly growing and adapting to the needs of the healthcare industry and its patients. Over the past few years, artificial intelligence in medical diagnosis has shown immense promise in changing the standards of medical care while reducing the extreme pressures felt by the medical industry.\nPhysician burnout is a very real problem . The exhaustion and overwork felt by many medical professionals is impacting on their performance. Physicians are leaving their jobs, struggling to deliver quality patient care, and juggling complex emotional challenges. This is largely brought on by long hours, overwhelming workloads and a lack of support. Physicians make complex and life changing decisions, daily, and often are not given either the space or time to manage their workloads effectively. In the recent Medscape National Physician Burnout and Suicide Report 2022 , the statistics pointed to the risks inherent in putting too much pressure on practitioners, especially those trying to juggle families, retirement planning and the complexities of their jobs.\nIn this year\u2019s report, 47% of physicians revealed that they\u2019re burned out. The specialties most affected being emergency medicine, critical care, family medicine, neurology, urology, and internal medicine. The leading cause? The administrative burden.\nThis is where AI can play a pivotal role. Designed with intent, artificial intelligence in medical diagnosis can not only reduce the pressure on physicians when working through vast quantities of information and imaging, but it can be used to undertake a large percentage of the administrative burden. The right solutions, developed specifically for the healthcare sector, can be used to provide medical practitioners with essential support as they manage increasing volumes of data, information and imaging volumes.\nAI can provide tangible support to overworked physicians with systems that are designed to minimize stress and increase time spent with patients.\nArtificial intelligence in medical diagnosis is a powerful tool for reducing physician burnout, but equally for providing the radiology professional with exceptional support in managing workloads that are only on the increase. Radiologists have to deal with multiple and rising imaging volumes, and they\u2019re expected to do so at speeds that were previously unheard of. Today, they have to sift through volumes of images while still prioritizing those that are urgent and managing patient care.\nThis is where artificial intelligence in medical diagnosis really shines. AI and deep learning solutions have been providing radiologists with essential support as they manage these weighty imaging volumes, offering them the ability to streamline workflows, save time, increase capacity and increase diagnosis reliability. This reduces pressure on the radiologist significantly. Solutions such as Aidoc go through the vast quantities of images, flagging those that the AI consider to be of concern. The radiologist can then assess the flagged images as a matter of priority, thereby catching urgent cases faster without compromising on their existing workloads or cases.\nAidoc has obtained 13 FDA/CE clearances for the flagging and prioritization of acute abnormalities in CT scans and is already deployed and showing value at over 1000 medical facilities across the world.\nArtificial intelligence in medical diagnosis is still on the edge of its potential. There\u2019s plenty of room for growth and for the technology to improve on what it can do to support the medical profession. AI as it stands today is already being integrated into practice and workflows, and as it continues to evolve and change and adapt, it will likely step up to give the medical profession a reliable set of tools that can aid in diagnosis, workflow, admin and workload.",
     }
 }
+hymem_few_shot = [{
+    "topic": "hymem_demo_commute_01",
+    "source_spans": {
+        "hymem_demo_commute_01__turn_0": "Session starts at: 2024-05-12 07:45:00",
+        "hymem_demo_commute_01__turn_3": "Ava: I switched from driving to the Green Line because parking downtown got expensive.",
+        "hymem_demo_commute_01__turn_6": "Noah: Right, and you said the train takes about 35 minutes when it runs on time."
+    },
+    "sentence": "The session began at 2024-05-12 07:45:00, and Ava now commutes on the Green Line with a typical 35-minute ride.",
+    "spans_aligned": [
+        "Session starts at: 2024-05-12 07:45:00",
+        "I switched from driving to the Green Line",
+        "the train takes about 35 minutes"
+    ]
+}, {
+    "topic": "hymem_demo_health_02",
+    "source_spans": {
+        "hymem_demo_health_02__turn_0": "Session starts at: 2024-09-03 20:10:00",
+        "hymem_demo_health_02__turn_4": "Lena: My doctor moved my checkup to next Thursday at 9:30 a.m.",
+        "hymem_demo_health_02__turn_8": "Mia: You also planned to bring your blood pressure log from August."
+    },
+    "sentence": "This chat started on 2024-09-03 at 20:10, and Lena has a rescheduled checkup next Thursday at 9:30 a.m. with her August blood pressure log.",
+    "spans_aligned": [
+        "Session starts at: 2024-09-03 20:10:00",
+        "my checkup to next Thursday at 9:30 a.m.",
+        "bring your blood pressure log from August"
+    ]
+}, {
+    "topic": "hymem_demo_project_03",
+    "source_spans": {
+        "hymem_demo_project_03__turn_0": "Session starts at: 2025-01-18 14:02:00",
+        "hymem_demo_project_03__turn_2": "Iris: We promised to deliver the prototype by February 3.",
+        "hymem_demo_project_03__turn_7": "Ethan: To stay on track, we'll freeze new features after the Friday review."
+    },
+    "sentence": "At the 2025-01-18 14:02 session, they confirmed a February 3 prototype deadline and a feature freeze after Friday's review.",
+    "spans_aligned": [
+        "Session starts at: 2025-01-18 14:02:00",
+        "deliver the prototype by February 3",
+        "freeze new features after the Friday review"
+    ]
+}, {
+    "topic": "hymem_demo_hobby_04",
+    "source_spans": {
+        "hymem_demo_hobby_04__turn_0": "Session starts at: 2025-03-02 19:20:00",
+        "hymem_demo_hobby_04__turn_4": "Nora: I finally joined a pottery class on Saturdays.",
+        "hymem_demo_hobby_04__turn_9": "Kai: You said the instructor focuses on beginner wheel-throwing basics."
+    },
+    "sentence": "Nora joined a Saturday pottery class that focuses on beginner wheel-throwing basics.",
+    "spans_aligned": [
+        "joined a pottery class on Saturdays",
+        "focuses on beginner wheel-throwing basics"
+    ]
+}]
+
+hymem_few_shot_documents = {
+    "hymem_demo_commute_01": {
+        "turns.txt": "Session starts at: 2024-05-12 07:45:00 Ava: I switched from driving to the Green Line because parking downtown got expensive. Noah: Right, and you said the train takes about 35 minutes when it runs on time."
+    },
+    "hymem_demo_health_02": {
+        "turns.txt": "Session starts at: 2024-09-03 20:10:00 Lena: My doctor moved my checkup to next Thursday at 9:30 a.m. Mia: You also planned to bring your blood pressure log from August."
+    },
+    "hymem_demo_project_03": {
+        "turns.txt": "Session starts at: 2025-01-18 14:02:00 Iris: We promised to deliver the prototype by February 3. Ethan: To stay on track, we'll freeze new features after the Friday review."
+    },
+    "hymem_demo_hobby_04": {
+        "turns.txt": "Session starts at: 2025-03-02 19:20:00 Nora: I finally joined a pottery class on Saturdays. Kai: You said the instructor focuses on beginner wheel-throwing basics."
+    }
+}
