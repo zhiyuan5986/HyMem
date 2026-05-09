@@ -2,6 +2,7 @@
 """Embedding-based retrieval system for HyMem."""
 
 import os
+import json
 from typing import List, Dict, Optional, Any
 import pickle
 import numpy as np
@@ -119,8 +120,26 @@ class LanceDBMemorySummaryRetriever:
             pa.field('index', pa.int64()),
             pa.field('link', pa.string()),
             pa.field('timestamp', pa.string()),
-            pa.field('metadata', pa.struct([])),
+            pa.field('metadata', pa.string()),
         ])
+
+    @staticmethod
+    def _serialize_metadata(metadata: Any) -> str:
+        if isinstance(metadata, str):
+            return metadata
+        return json.dumps(metadata or {}, ensure_ascii=False)
+
+    @staticmethod
+    def _parse_metadata(metadata: Any) -> Dict[str, Any]:
+        if isinstance(metadata, dict):
+            return metadata
+        if not metadata:
+            return {}
+        try:
+            parsed = json.loads(metadata)
+        except (TypeError, json.JSONDecodeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
 
     def _get_vector_dim(self) -> int:
         """Infer embedding dimensionality from model internals or a probe call."""
@@ -148,7 +167,7 @@ class LanceDBMemorySummaryRetriever:
                 id=row.get('id', ''),
                 link=row.get('link', ''),
                 timestamp=row.get('timestamp', ''),
-                metadata=row.get('metadata', {}),
+                metadata=self._parse_metadata(row.get('metadata', '{}')),
             )
             for row in rows
         ]
@@ -168,7 +187,7 @@ class LanceDBMemorySummaryRetriever:
                 'index': start_idx + i,
                 'link': doc.get('link', ''),
                 'timestamp': doc.get('timestamp', ''),
-                'metadata': doc.get('metadata', {}),
+                'metadata': self._serialize_metadata(doc.get('metadata', {})),
             }
             payloads.append(entry)
         self.table.add(payloads)
@@ -178,7 +197,7 @@ class LanceDBMemorySummaryRetriever:
                 id=doc.get('id', ''),
                 link=doc.get('link', ''),
                 timestamp=doc.get('timestamp', ''),
-                metadata=doc.get('metadata', {}),
+                metadata=self._parse_metadata(self._serialize_metadata(doc.get('metadata', {}))),
             )
             for doc in documents
         ])
@@ -239,12 +258,30 @@ class LanceDBLLMSpanRetriever:
             pa.field('id', pa.string()),
             pa.field('index', pa.int64()),
             pa.field('timestamp', pa.string()),
-            pa.field('metadata', pa.struct([])),
+            pa.field('metadata', pa.string()),
         ])
+
+    @staticmethod
+    def _serialize_metadata(metadata: Any) -> str:
+        if isinstance(metadata, str):
+            return metadata
+        return json.dumps(metadata or {}, ensure_ascii=False)
+
+    @staticmethod
+    def _parse_metadata(metadata: Any) -> Dict[str, Any]:
+        if isinstance(metadata, dict):
+            return metadata
+        if not metadata:
+            return {}
+        try:
+            parsed = json.loads(metadata)
+        except (TypeError, json.JSONDecodeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
 
     def get_all_entries(self) -> List[LLMSpan]:
         rows = self.table.to_arrow().to_pylist()
-        return [LLMSpan(content=r.get('content', ''), id=r.get('id', ''), timestamp=r.get('timestamp', ''), metadata=r.get('metadata', {})) for r in rows]
+        return [LLMSpan(content=r.get('content', ''), id=r.get('id', ''), timestamp=r.get('timestamp', ''), metadata=self._parse_metadata(r.get('metadata', '{}'))) for r in rows]
 
     def add_documents(self, documents: List[Dict[str, Any]]) -> None:
         if not documents:
@@ -255,10 +292,10 @@ class LanceDBLLMSpanRetriever:
         for i, doc in enumerate(documents):
             payloads.append({
                 'vector': vectors[i], 'content': doc['content'], 'id': doc.get('id', ''), 'index': start_idx + i,
-                'timestamp': doc.get('timestamp', ''), 'metadata': doc.get('metadata', {}),
+                'timestamp': doc.get('timestamp', ''), 'metadata': self._serialize_metadata(doc.get('metadata', {})),
             })
         self.table.add(payloads)
-        self.entries.extend([LLMSpan(content=d.get('content', ''), id=d.get('id', ''), timestamp=d.get('timestamp', ''), metadata=d.get('metadata', {})) for d in documents])
+        self.entries.extend([LLMSpan(content=d.get('content', ''), id=d.get('id', ''), timestamp=d.get('timestamp', ''), metadata=self._parse_metadata(self._serialize_metadata(d.get('metadata', {})))) for d in documents])
 
     def search(self, query: str, k: int = 5) -> np.ndarray:
         qv = self.model.get_text_embedding(query)
