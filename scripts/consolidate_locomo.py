@@ -21,7 +21,7 @@ from hymem.core.retriever import LanceDBLLMSpanRetriever, LanceDBMemorySummaryRe
 
 from hymem.ref.SimpleMem.scripts.filter_extraction_trace_longllmlingua import TopKPPLPromptCompressor
 from hymem.ref.SimpleMem.scripts.filter_extraction_trace_longllmlingua_laquer import align_entry_with_laquer, normalize_spans
-from hymem.ref.SimpleMem.src.consts import LFQA_TASK
+from hymem.ref.SimpleMem.src.consts import HYMEM_TASK
 from hymem.ref.SimpleMem.src.laquer_methods.llm_method import LLMBasedAlignment  # type: ignore
 
 
@@ -79,7 +79,7 @@ def main() -> None:
         raise FileNotFoundError(f"No memory exports found under: {args.logs_dir}")
 
     compressor = TopKPPLPromptCompressor(model_name=args.compressor_model_name, device_map=args.compressor_device_map)
-    aligner = LLMBasedAlignment(task=LFQA_TASK, args=args)
+    aligner = LLMBasedAlignment(task=HYMEM_TASK, args=args)
 
     summaries: list[dict[str, Any]] = []
     for export_file in exports:
@@ -136,9 +136,15 @@ def main() -> None:
                 for idx in range(start_idx, min(end_idx + 1, len(session_turns))):
                     support_turns.append({"turn_index": idx, "text": session_turns[idx]})
 
-            align_result = align_entry_with_laquer(aligner=aligner, entry_text=entry_text, context_turns=support_turns) if support_turns else {}
+            alignment_context_turns = list(support_turns)
+            if aligner.task == HYMEM_TASK and session_turns:
+                has_turn_zero = any(int(turn.get("turn_index", -1)) == 0 for turn in alignment_context_turns)
+                if not has_turn_zero:
+                    alignment_context_turns.insert(0, {"turn_index": 0, "text": session_turns[0]})
+
+            align_result = align_entry_with_laquer(aligner=aligner, entry_text=entry_text, context_turns=alignment_context_turns) if alignment_context_turns else {}
             raw_rows = align_result["results"].to_dict("records") if align_result and "results" in align_result else []
-            spans = normalize_spans(rows=raw_rows, context_turns=support_turns)
+            spans = normalize_spans(rows=raw_rows, context_turns=alignment_context_turns)
             span_text = " ".join([s.get("span_text", "") for s in spans if s.get("span_text")]).strip()
 
             span_retriever.add_documents([{
@@ -150,7 +156,7 @@ def main() -> None:
                     "trace_item_index": item_idx,
                     "entry_id": summary_id,
                     "entry_text": entry_text,
-                    "support_turns": support_turns,
+                    "support_turns": alignment_context_turns,
                     "llm_spans": spans,
                     "llm_raw_spans": raw_rows,
                     "llm_response": {k: v for k, v in align_result.items() if k != "results"} if align_result else {},
