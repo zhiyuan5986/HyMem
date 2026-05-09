@@ -128,21 +128,19 @@ def build_context(sample, qa, compressor, ratio: float) -> str:
             continue
         lines = [f"Session starts at: {session.date_time}"]
         turn_docs = []
-        turn_prefixes = []
         for turn in session.turns:
-            turn_prefixes.append(f"Speaker {turn.speaker} says : ")
-            turn_docs.append(turn.text)
+            turn_docs.append(f"Speaker {turn.speaker} says : {turn.text}")
 
         compressed_docs, keep_flags = compress_turn_documents(compressor, turn_docs, qa.question, ratio)
         if len(compressed_docs) != len(turn_docs) or len(keep_flags) != len(turn_docs):
             compressed_docs = turn_docs
             keep_flags = [True] * len(turn_docs)
 
-        for prefix, compressed_content, keep in zip(turn_prefixes, compressed_docs, keep_flags):
+        for compressed_content, keep in zip(compressed_docs, keep_flags):
             if not keep:
                 continue
             content = compressed_content if compressed_content.strip() else ""
-            lines.append(prefix + content)
+            lines.append(content)
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
 
@@ -212,9 +210,6 @@ def main() -> None:
             qa_row = {"sample_idx": sample_idx, "qa_idx": qa_idx, "question": qa.question, "gold": gold, "ratios": {}}
             for ratio in ratios:
                 context = build_context(sample, qa, compressor, ratio)
-                print(f"ratio: {ratio}")
-                print(context)
-                breakpoint()
 
                 raw_answer = ask_llm(client, args.qa_model, build_answer_prompt(context, qa.question), temperature=0.0)
                 try:
