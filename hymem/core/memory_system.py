@@ -160,7 +160,7 @@ class AgenticMemorySystem:
         ]
 
         self.summary_list.extend(memsums)
-        self.retriever.add_documents([m.to_dict() for m in memsums])
+        self.retriever.add_documents([m.model_dump() for m in memsums])
 
         self.memories[note.id] = note
     
@@ -553,4 +553,4 @@ class AgenticMemorySystem:
             if os.path.exists(summaries_file):
                 with open(summaries_file, 'rb') as f:
                     raw_summaries = pickle.load(f)
-                self.summary_list = [MemorySummary.from_dict(s) for s in raw_summaries]
+                self.summary_list = [MemorySummary.model_validate(s) for s in raw_summaries]
