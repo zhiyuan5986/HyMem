@@ -292,6 +292,7 @@ def evaluate_dataset(
         # Create agent for this sample
         agent = HybridMemAgent(
             embed_model=embed_model,
+            db_path=cache_dir+f"/lancedb_sample_{sample_idx}",
             model_name=model_name,
             embed_api_key=embed_api_key,
             api_key=api_key,
@@ -314,7 +315,7 @@ def evaluate_dataset(
             process_conversation(agent, sample, logger)
             save_cached_memories(agent, cache_dir, sample_idx, logger)
 
-        sample_memory_dir = os.path.join(os.path.dirname(__file__), "memory_exports", log_name)
+        sample_memory_dir = os.path.join(cache_dir, "memory_exports")
         save_sample_memory_json(agent, sample_memory_dir, sample_idx)
 
         logger.info(f"Processing sample {sample_idx + 1}/{len(samples)}")

@@ -140,7 +140,7 @@ class LanceDBMemorySummaryRetriever:
     def get_all_entries(self) -> List[MemorySummary]:
         if self.table is None:
             return []
-        rows = self.table.to_list()
+        rows = self.table.to_arrow().to_pylist()
         return [
             MemorySummary(
                 content=row.get('content', ''),

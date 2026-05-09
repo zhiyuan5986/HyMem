@@ -36,6 +36,7 @@ class AgenticMemorySystem:
         self,
         llm_backend: str = "openai",
         embed_llm_model: str = "",
+        db_path: str = "",
         embed_api_key: Optional[str] = None,
         embed_base_url: Optional[str] = None,
         llm_model: str = "",
@@ -57,7 +58,7 @@ class AgenticMemorySystem:
             temperature: Temperature for LLM generation
         """
         self.memories: Dict[str, MemoryNote] = {}
-        self.retriever = LanceDBMemorySummaryRetriever(model_name=embed_llm_model)
+        self.retriever = LanceDBMemorySummaryRetriever(model_name=embed_llm_model, db_path=db_path)
         self.llm_controller = LLMController(llm_backend, llm_model, api_key, base_url)
         self.summary_list: List[MemorySummary] = []
         self.temperature = temperature

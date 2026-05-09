@@ -37,6 +37,7 @@ class HybridMemAgent:
     def __init__(
         self,
         embed_model: str,
+        db_path: str,
         model_name: str,
         embed_api_key: str,
         api_key: str,
@@ -65,6 +66,7 @@ class HybridMemAgent:
         self.memory_system = AgenticMemorySystem(
             llm_backend=backend,
             embed_llm_model=embed_model,
+            db_path=db_path,
             embed_api_key=embed_api_key,
             embed_base_url=embed_base_url,
             llm_model=model_name,
