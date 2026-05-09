@@ -119,10 +119,12 @@ class MemorySummary:
     def __init__(
         self,
         content: str,
+        id: Optional[str] = None,
         link: Optional[str] = None,
         timestamp: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ):
+        self.id = id or str(uuid.uuid4())
         self.content = content
         self.link = link
         self.timestamp = timestamp
@@ -131,6 +133,7 @@ class MemorySummary:
     def to_dict(self) -> dict:
         """Convert MemorySummary to dictionary representation."""
         return {
+            "id": self.id,
             "content": self.content,
             "link": self.link,
             "timestamp": self.timestamp,
@@ -143,4 +146,32 @@ class MemorySummary:
         return cls(**data)
 
     def __repr__(self) -> str:
-        return f"MemorySummary(link={self.link}, timestamp={self.timestamp})"
+        return f"MemorySummary(id={self.id}, link={self.link}, timestamp={self.timestamp})"
+
+
+class LLMSpan:
+    """Fine-grained LLM span linked to a MemorySummary id."""
+
+    def __init__(
+        self,
+        content: str,
+        id: Optional[str] = None,
+        timestamp: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
+        self.id = id or str(uuid.uuid4())
+        self.content = content
+        self.timestamp = timestamp
+        self.metadata = metadata or {}
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "content": self.content,
+            "timestamp": self.timestamp,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "LLMSpan":
+        return cls(**data)
