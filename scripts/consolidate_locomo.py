@@ -40,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-trace-items", type=int, default=-1)
     parser.add_argument("--max-entries-per-item", type=int, default=-1)
     parser.add_argument("--fallback-spans-root", type=Path, default=Path("outputs/locomo10_spans_fallback"))
+    parser.add_argument("--embed-model", type=str, required=True)
     return parser.parse_args()
 
 
@@ -94,8 +95,8 @@ def main() -> None:
             used_fallback_db = True
         db_dir.mkdir(parents=True, exist_ok=True)
 
-        memory_retriever = LanceDBMemorySummaryRetriever(db_path=str(db_dir))
-        span_retriever = LanceDBLLMSpanRetriever(db_path=str(db_dir), table_name="llm_spans")
+        memory_retriever = LanceDBMemorySummaryRetriever(model_name=args.embed_model, db_path=str(db_dir))
+        span_retriever = LanceDBLLMSpanRetriever(model_name=args.embed_model, db_path=str(db_dir), table_name="llm_spans")
 
         pairs = payload.get("summary_note_pairs", [])
         max_items = len(pairs) if args.max_trace_items < 0 else min(args.max_trace_items, len(pairs))

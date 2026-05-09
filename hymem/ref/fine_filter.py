@@ -14,9 +14,10 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
-
-from hymem.ref.SimpleMem.src.consts import HYMEM_TASK
-from hymem.ref.SimpleMem.src.laquer_methods.llm_method import LLMBasedAlignment  # type: ignore
+# add src to sys.path
+sys.path.append(os.path.join(os.path.dirname(__file__)))
+from src.consts import HYMEM_TASK
+from src.laquer_methods.llm_method import LLMBasedAlignment  # type: ignore
 
 
 def parse_args() -> argparse.Namespace:

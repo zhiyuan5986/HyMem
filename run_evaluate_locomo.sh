@@ -3,6 +3,7 @@ OPENAI_BASE_URL=https://models.sjtu.edu.cn/api/v1
 datetime=$(date +%Y%m%d%H%M%S)
 python scripts/evaluate_locomo.py \
  --dataset ./data/locomo10.json \
+ --output ./data/locomo10_${datetime}.json \
  --backend openai \
  --model_name deepseek-chat \
  --embed_model ~/Documents/Qwen3-Embedding-0.6B \
