@@ -286,6 +286,7 @@ def evaluate_dataset(
     total_questions = 0
     category_counts = defaultdict(int)
     allowed_categories = [1, 2, 3, 4]
+    output_records = []
 
     # Process each sample
     for sample_idx, sample in enumerate(tqdm(samples, total=len(samples))):
@@ -332,28 +333,31 @@ def evaluate_dataset(
             prediction, user_prompt = agent.answer_question(
                 qa.question, qa.category, qa.final_answer
             )
+            stats = agent.get_last_retrieval_stats()
             return (
                 idx,
                 qa,
                 prediction,
-                user_prompt
+                user_prompt,
+                stats
             )
 
         with ThreadPoolExecutor(max_workers=8) as executor:
             futures = [executor.submit(worker, i, qa) for i, qa in valid_qas]
 
             for f in tqdm(as_completed(futures), total=len(futures), desc="questions", leave=False):
-                idx, qa, prediction, user_prompt = f.result()
+                idx, qa, prediction, user_prompt, stats = f.result()
                 results[idx] = (
                     qa,
                     prediction,
-                    user_prompt
+                    user_prompt,
+                    stats
                 )
 
         for res in results:
             if res is None:
                 continue
-            qa, prediction, user_prompt = res
+            qa, prediction, user_prompt, stats = res
             total_questions += 1
             category_counts[qa.category] += 1
             logger.info(f"\nQuestion {total_questions}: {qa.question}")
@@ -361,6 +365,18 @@ def evaluate_dataset(
             logger.info(f"Reference: {qa.final_answer}")
             logger.info(f"User Prompt: {user_prompt}")
             logger.info(f"Category: {qa.category}")
+            output_records.append({
+                "question": qa.question,
+                "prediction": prediction,
+                "reference": qa.final_answer,
+                "category": int(qa.category),
+                "retrieved_memory": user_prompt,
+                "retrieve_tokens": stats.get("retrieve_tokens", 0),
+                "answer_tokens": stats.get("answer_tokens", 0),
+                "total_tokens": stats.get("total_tokens", 0),
+                "latency_seconds": stats.get("latency_seconds", 0.0),
+                "stage": stats.get("stage", "unknown")
+            })
         del agent
         gc.collect()
     
@@ -372,6 +388,12 @@ def evaluate_dataset(
     logger.info(f"Categories: {dict(category_counts)}")
 
 
+
+    if output_path:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(output_records, f, ensure_ascii=False, indent=2)
+        logger.info(f"Saved detailed retrieval stats to {output_path}")
 
 def main():
     """Main entry point for evaluation script."""
