@@ -15,14 +15,14 @@ if str(REPO_ROOT) not in sys.path:
 
 from hymem.core.retriever import LanceDBLLMSpanRetriever, LanceDBMemorySummaryRetriever
 
-SIMPLEMEM_ROOT = REPO_ROOT / "hymem" / "ref" / "SimpleMem"
-if str(SIMPLEMEM_ROOT) not in sys.path:
-    sys.path.insert(0, str(SIMPLEMEM_ROOT))
+# SIMPLEMEM_ROOT = REPO_ROOT / "hymem" / "ref" / "SimpleMem"
+# if str(SIMPLEMEM_ROOT) not in sys.path:
+#     sys.path.insert(0, str(SIMPLEMEM_ROOT))
 
-from scripts.filter_extraction_trace_longllmlingua import TopKPPLPromptCompressor
-from scripts.filter_extraction_trace_longllmlingua_laquer import align_entry_with_laquer, normalize_spans
-from src.consts import LFQA_TASK
-from src.laquer_methods.llm_method import LLMBasedAlignment  # type: ignore
+from hymem.ref.SimpleMem.scripts.filter_extraction_trace_longllmlingua import TopKPPLPromptCompressor
+from hymem.ref.SimpleMem.scripts.filter_extraction_trace_longllmlingua_laquer import align_entry_with_laquer, normalize_spans
+from hymem.ref.SimpleMem.src.consts import LFQA_TASK
+from hymem.ref.SimpleMem.src.laquer_methods.llm_method import LLMBasedAlignment  # type: ignore
 
 
 def parse_args() -> argparse.Namespace:
