@@ -102,6 +102,7 @@ def _materialize_route_entries(agent, route_indices):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--dataset', type=str, default='./data/locomo10.json')
+    p.add_argument('--cache_dir', type=str, default='./cache')
     p.add_argument('--output', type=str, default='./results/locomo_dualview_recall.json')
     p.add_argument('--ratio', type=float, default=1.0)
     p.add_argument('--backend', type=str, default='openai')
@@ -137,7 +138,7 @@ def main():
     if args.ratio < 1.0:
         samples = samples[:max(1, int(len(samples)*args.ratio))]
 
-    cache_dir = os.path.join(os.path.dirname(__file__), f'cached_memories_dualview_{datetime.now().strftime("%Y%m%d%H%M%S")}')
+    cache_dir = os.path.join(os.path.dirname(__file__), args.cache_dir)
     results = []
     recall_stats = defaultdict(list)
 
@@ -185,6 +186,8 @@ def main():
                 recall_stats['light'].append(light_recall)
             if deep_recall is not None:
                 recall_stats['deep'].append(deep_recall)
+            print("light_pred_ids:",light_pred_ids)
+            print(f"light_recall: {light_recall}, deep_recall: {deep_recall}")
 
             results.append({
                 'sample_idx': sample_idx,
