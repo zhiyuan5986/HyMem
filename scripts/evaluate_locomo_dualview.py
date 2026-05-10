@@ -15,16 +15,30 @@ RECALL_CATEGORIES = {1,2,3,4}
 def _collect_ids_from_text(text: str):
     return set(re.findall(r"(session_\d+:[^,\s]+)", text or ""))
 
-def _collect_ids_from_llm_spans(span_entry):
+def _normalize_dia_id(raw_id, session_id):
+    s = str(raw_id).strip()
+    if not s:
+        return None
+    if re.match(r"^D\d+:\d+$", s):
+        return s
+    if re.match(r"^session_\d+:[^,\s]+$", s):
+        return s
+    if re.match(r"^\d+$", s) and session_id is not None:
+        return f"D{session_id}:{s}"
+    return s
+
+def _collect_ids_from_llm_spans(span_entry, session_id=None):
     ids = set()
     md = getattr(span_entry, "metadata", {}) or {}
     if not isinstance(md, dict):
         return ids
-
     for dia_key in ("support_turn_dia_ids", "evidence", "evidences"):
         v = md.get(dia_key)
         if isinstance(v, list):
-            ids.update({str(x).strip() for x in v if str(x).strip()})
+            for x in v:
+                dia_id = _normalize_dia_id(x, session_id)
+                if dia_id:
+                    ids.add(dia_id)
 
     llm_spans = md.get("llm_spans")
     if isinstance(llm_spans, list):
@@ -33,14 +47,24 @@ def _collect_ids_from_llm_spans(span_entry):
                 continue
             for k in ("dia_id", "dialogue_id", "legacy_dialogue_id"):
                 v = span.get(k)
-                if v is not None and str(v).strip():
-                    ids.add(str(v).strip())
+                dia_id = _normalize_dia_id(v, session_id)
+                if dia_id:
+                    ids.add(dia_id)
             ids.update(_collect_ids_from_text(span.get("span_text", "")))
 
     ids.update(_collect_ids_from_text(getattr(span_entry, "content", "")))
     return ids
 
-def recall_from_indices(indices, qa_evidence, summary_entries, span_entries):
+def _build_session_id_by_link(memories):
+    """
+    Build {memory_link_id: one_based_session_id} by memory note order.
+    session_id should start from 1.
+    """
+    if not memories:
+        return {}
+    return {memory_id: idx + 1 for idx, memory_id in enumerate(memories.keys())}
+
+def recall_from_indices(indices, qa_evidence, summary_entries, span_entries, session_id_by_link):
     gold = {str(x).strip() for x in (qa_evidence or []) if str(x).strip()}
     if not gold:
         return None, [], []
@@ -57,7 +81,8 @@ def recall_from_indices(indices, qa_evidence, summary_entries, span_entries):
             summary_entry = summary_entries[idx]
             span_entry = span_entry_by_id.get(getattr(summary_entry, "id", None))
             if span_entry is not None:
-                pred.update(_collect_ids_from_llm_spans(span_entry))
+                resolved_session_id = session_id_by_link.get(getattr(summary_entry, "link", None))
+                pred.update(_collect_ids_from_llm_spans(span_entry, session_id=resolved_session_id))
     rec = len(pred & gold) / len(gold) if gold else None
     return rec, sorted(pred), sorted(gold)
 
@@ -208,12 +233,14 @@ def main():
                 qa.evidence,
                 agent.memory_system.summary_list,
                 agent.memory_system.span_retriever.entries,
+                _build_session_id_by_link(agent.memory_system.memories),
             )
             deep_recall, deep_pred_ids, _ = recall_from_indices(
                 deep_indices,
                 qa.evidence,
                 agent.memory_system.summary_list,
                 agent.memory_system.span_retriever.entries,
+                _build_session_id_by_link(agent.memory_system.memories),
             )
             if light_recall is not None:
                 recall_stats['light'].append(light_recall)
