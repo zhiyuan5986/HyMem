@@ -15,26 +15,49 @@ RECALL_CATEGORIES = {1,2,3,4}
 def _collect_ids_from_text(text: str):
     return set(re.findall(r"(session_\d+:[^,\s]+)", text or ""))
 
-def _collect_ids_from_summary(summary):
-    ids = set(_collect_ids_from_text(getattr(summary, "content", "")))
-    md = getattr(summary, "metadata", {}) or {}
-    if isinstance(md, dict):
-        for k,v in md.items():
-            if str(k).lower() in {"dia_id","dialogue_id","evidence","evidences"}:
-                if isinstance(v, list):
-                    ids.update({str(x).strip() for x in v if str(x).strip()})
-                elif v:
+def _collect_ids_from_llm_spans(span_entry):
+    ids = set()
+    md = getattr(span_entry, "metadata", {}) or {}
+    if not isinstance(md, dict):
+        return ids
+
+    for dia_key in ("support_turn_dia_ids", "evidence", "evidences"):
+        v = md.get(dia_key)
+        if isinstance(v, list):
+            ids.update({str(x).strip() for x in v if str(x).strip()})
+
+    llm_spans = md.get("llm_spans")
+    if isinstance(llm_spans, list):
+        for span in llm_spans:
+            if not isinstance(span, dict):
+                continue
+            for k in ("dia_id", "dialogue_id", "legacy_dialogue_id"):
+                v = span.get(k)
+                if v is not None and str(v).strip():
                     ids.add(str(v).strip())
+            ids.update(_collect_ids_from_text(span.get("span_text", "")))
+
+    ids.update(_collect_ids_from_text(getattr(span_entry, "content", "")))
     return ids
 
-def recall_from_indices(indices, qa_evidence, summaries):
+def recall_from_indices(indices, qa_evidence, summary_entries, span_entries):
     gold = {str(x).strip() for x in (qa_evidence or []) if str(x).strip()}
     if not gold:
         return None, [], []
+
+    span_entry_by_id = {}
+    for entry in span_entries:
+        entry_id = getattr(entry, "id", None)
+        if entry_id:
+            span_entry_by_id[entry_id] = entry
+
     pred = set()
     for idx in indices:
-        if 0 <= idx < len(summaries):
-            pred.update(_collect_ids_from_summary(summaries[idx]))
+        if 0 <= idx < len(summary_entries):
+            summary_entry = summary_entries[idx]
+            span_entry = span_entry_by_id.get(getattr(summary_entry, "id", None))
+            if span_entry is not None:
+                pred.update(_collect_ids_from_llm_spans(span_entry))
     rec = len(pred & gold) / len(gold) if gold else None
     return rec, sorted(pred), sorted(gold)
 
@@ -180,8 +203,18 @@ def main():
             light_indices = debug.get('light_indices', [])
             deep_indices = debug.get('deep_indices', [])
 
-            light_recall, light_pred_ids, gold_ids = recall_from_indices(light_indices, qa.evidence, agent.memory_system.summary_list)
-            deep_recall, deep_pred_ids, _ = recall_from_indices(deep_indices, qa.evidence, agent.memory_system.summary_list)
+            light_recall, light_pred_ids, gold_ids = recall_from_indices(
+                light_indices,
+                qa.evidence,
+                agent.memory_system.summary_list,
+                agent.memory_system.span_retriever.entries,
+            )
+            deep_recall, deep_pred_ids, _ = recall_from_indices(
+                deep_indices,
+                qa.evidence,
+                agent.memory_system.summary_list,
+                agent.memory_system.span_retriever.entries,
+            )
             if light_recall is not None:
                 recall_stats['light'].append(light_recall)
             if deep_recall is not None:
