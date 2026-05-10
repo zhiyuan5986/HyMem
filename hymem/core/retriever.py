@@ -3,6 +3,7 @@
 
 import os
 import json
+import time
 from typing import List, Dict, Optional, Any
 import pickle
 import numpy as np
@@ -107,6 +108,7 @@ class LanceDBMemorySummaryRetriever:
         else:
             self.table = self.db.create_table(table_name, data=[], schema=self._get_table_schema())
         self.entries: List[MemorySummary] = self.get_all_entries()
+        self._ensure_fts_index()
 
     def _get_table_schema(self):
         """Build LanceDB schema so empty-table initialization is valid."""
@@ -191,6 +193,7 @@ class LanceDBMemorySummaryRetriever:
             }
             payloads.append(entry)
         self.table.add(payloads)
+        self._ensure_fts_index()
         self.entries.extend([
             MemorySummary(
                 content=doc.get('content', ''),
@@ -212,8 +215,37 @@ class LanceDBMemorySummaryRetriever:
     def keyword_search(self, query: str, k: int = 5) -> np.ndarray:
         if self.table is None:
             return np.array([])
+        self._ensure_fts_index()
         rs = self.table.search(query, query_type='fts').limit(k).to_list()
         return np.array([int(r['index']) for r in rs])
+
+    def _ensure_fts_index(self, retries: int = 20, wait_seconds: float = 0.1) -> None:
+        """Create FTS index safely across concurrent workers/processes."""
+        if self.table is None:
+            return
+        lock_path = os.path.join(os.path.dirname(self.db.uri), f".{self.table_name}_fts.lock")
+        for attempt in range(retries):
+            lock_fd = None
+            acquired = False
+            try:
+                lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(lock_fd)
+                lock_fd = None
+                acquired = True
+                self.table.create_fts_index("content", replace=True)
+                return
+            except FileExistsError:
+                time.sleep(wait_seconds)
+            except Exception:
+                return
+            finally:
+                if lock_fd is not None:
+                    os.close(lock_fd)
+                if acquired and os.path.exists(lock_path):
+                    try:
+                        os.remove(lock_path)
+                    except OSError:
+                        pass
 
     def search(self, query: str, k: int = 5) -> np.ndarray:
         return self.semantic_search(query, k)
@@ -248,6 +280,7 @@ class LanceDBLLMSpanRetriever:
         else:
             self.table = self.db.create_table(table_name, data=[], schema=self._get_table_schema())
         self.entries: List[LLMSpan] = self.get_all_entries()
+        self._ensure_fts_index()
 
     def _get_table_schema(self):
         import pyarrow as pa
@@ -295,12 +328,45 @@ class LanceDBLLMSpanRetriever:
                 'timestamp': doc.get('timestamp', ''), 'metadata': self._serialize_metadata(doc.get('metadata', {})),
             })
         self.table.add(payloads)
+        self._ensure_fts_index()
         self.entries.extend([LLMSpan(content=d.get('content', ''), id=d.get('id', ''), timestamp=d.get('timestamp', ''), metadata=self._parse_metadata(self._serialize_metadata(d.get('metadata', {})))) for d in documents])
 
     def search(self, query: str, k: int = 5) -> np.ndarray:
         qv = self.model.get_text_embedding(query)
         rs = self.table.search(qv).limit(k).to_list()
         return np.array([int(r['index']) for r in rs])
+
+    def keyword_search(self, query: str, k: int = 5) -> np.ndarray:
+        self._ensure_fts_index()
+        rs = self.table.search(query, query_type='fts').limit(k).to_list()
+        return np.array([int(r['index']) for r in rs])
+
+    def _ensure_fts_index(self, retries: int = 20, wait_seconds: float = 0.1) -> None:
+        if self.table is None:
+            return
+        lock_path = os.path.join(os.path.dirname(self.db.uri), f".{self.table_name}_fts.lock")
+        for attempt in range(retries):
+            lock_fd = None
+            acquired = False
+            try:
+                lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(lock_fd)
+                lock_fd = None
+                acquired = True
+                self.table.create_fts_index("content", replace=True)
+                return
+            except FileExistsError:
+                time.sleep(wait_seconds)
+            except Exception:
+                return
+            finally:
+                if lock_fd is not None:
+                    os.close(lock_fd)
+                if acquired and os.path.exists(lock_path):
+                    try:
+                        os.remove(lock_path)
+                    except OSError:
+                        pass
 
     def get_entry_by_id(self, entry_id: str) -> Optional[LLMSpan]:
         for entry in self.entries:

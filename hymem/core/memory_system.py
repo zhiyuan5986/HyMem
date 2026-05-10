@@ -7,12 +7,14 @@ retrieval and LLM-powered content analysis and question answering.
 
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
+from math import sqrt
 from typing import List, Dict, Optional, Tuple, Any
 import pickle
 import time
 import numpy as np
 from hymem.core.memory import MemoryNote, MemorySummary
-from hymem.core.retriever import SimpleEmbeddingRetriever, LanceDBMemorySummaryRetriever
+from hymem.core.retriever import SimpleEmbeddingRetriever, LanceDBMemorySummaryRetriever, LanceDBLLMSpanRetriever
 from hymem.core.llm_controller import LLMController
 from hymem.prompts.templates import PromptTemplates
 from hymem.utils.helpers import parse_json_response, cal_token
@@ -60,6 +62,7 @@ class AgenticMemorySystem:
         """
         self.memories: Dict[str, MemoryNote] = {}
         self.retriever = LanceDBMemorySummaryRetriever(model_name=embed_llm_model, db_path=db_path)
+        self.span_retriever = LanceDBLLMSpanRetriever(model_name=embed_llm_model, db_path=db_path)
         self.llm_controller = LLMController(llm_backend, llm_model, api_key, base_url)
         self.summary_list: List[MemorySummary] = []
         self.temperature = temperature
@@ -68,6 +71,127 @@ class AgenticMemorySystem:
         self.last_deep_retrieval_prompt_tokens = 0
         self.last_deep_answer_prompt_tokens = 0
         self.last_analyze_prompt_tokens = 0
+        self.enable_hybrid = False
+        self.last_hybrid_details: Dict[str, Any] = {}
+        self.hybrid_score_weights: Dict[str, float] = {
+            "mem_sem_weight": 0.65,
+            "mem_lex_weight": 0.35,
+            "span_sem_weight": 0.45,
+            "span_lex_weight": 0.55,
+            "final_mem_weight": 0.45,
+            "final_span_weight": 0.45,
+            "final_agree_weight": 0.10,
+            "rrf_k": 60.0,
+        }
+        self.hybrid_route_top_k: Dict[str, int] = {
+            "mem_sem_k": 10,
+            "mem_lex_k": 10,
+            "span_sem_k": 10,
+            "span_lex_k": 10,
+        }
+
+    def _extract_query_keywords(self, query: str) -> List[str]:
+        query_lower = query.lower()
+        skip_words = {
+            "what", "when", "where", "who", "why", "how", "does", "did", "have", "has",
+            "the", "about", "from", "with", "like", "think", "are", "is", "was", "were",
+        }
+        keywords = [
+            w.strip("?.,!'\"")
+            for w in query_lower.split()
+            if len(w) > 2 and w.lower() not in skip_words
+        ]
+
+        possessive_match = re.search(r"([A-Za-z]+)'s\s+(\w+)", query)
+        if possessive_match:
+            attr_word = possessive_match.group(2).lower()
+            keywords.extend([attr_word, f"{attr_word}s", f"{attr_word}ed"])
+
+        deduped: List[str] = []
+        seen = set()
+        for kw in keywords:
+            if kw and kw not in seen:
+                seen.add(kw)
+                deduped.append(kw)
+        return deduped[:5]
+
+    def hybrid_search(self, query: str, k: int = 5, **score_weights: float) -> np.ndarray:
+        weights = {**self.hybrid_score_weights, **score_weights}
+        rrf_k = int(weights["rrf_k"])
+        route_k = {
+            "mem_sem_k": int(score_weights.get("mem_sem_k", self.hybrid_route_top_k["mem_sem_k"])),
+            "mem_lex_k": int(score_weights.get("mem_lex_k", self.hybrid_route_top_k["mem_lex_k"])),
+            "span_sem_k": int(score_weights.get("span_sem_k", self.hybrid_route_top_k["span_sem_k"])),
+            "span_lex_k": int(score_weights.get("span_lex_k", self.hybrid_route_top_k["span_lex_k"])),
+        }
+        keywords = self._extract_query_keywords(query)
+        keyword_query = " ".join(keywords) if keywords else query
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            fut_mem_sem = executor.submit(self.retriever.semantic_search, query, route_k["mem_sem_k"])
+            fut_mem_lex = executor.submit(self.retriever.keyword_search, keyword_query, route_k["mem_lex_k"])
+            fut_span_sem = executor.submit(self.span_retriever.search, query, route_k["span_sem_k"])
+            fut_span_lex = executor.submit(self.span_retriever.keyword_search, keyword_query, route_k["span_lex_k"])
+            mem_sem = fut_mem_sem.result().tolist()
+            mem_lex = fut_mem_lex.result().tolist()
+            span_sem = fut_span_sem.result().tolist()
+            span_lex = fut_span_lex.result().tolist()
+
+        def _rrf_score(indices: List[int]) -> Dict[int, float]:
+            return {idx: 1.0 / (rrf_k + rank) for rank, idx in enumerate(indices, start=1)}
+
+        mem_sem_rrf = _rrf_score(mem_sem)
+        mem_lex_rrf = _rrf_score(mem_lex)
+
+        span_sem_rrf: Dict[int, float] = {}
+        span_lex_rrf: Dict[int, float] = {}
+        for rank, idx in enumerate(span_sem, start=1):
+            if idx < len(self.span_retriever.entries):
+                link_id = self.span_retriever.entries[idx].metadata.get("link")
+                sum_idx = self._summary_index_by_link(link_id)
+                if sum_idx is not None:
+                    span_sem_rrf[sum_idx] = max(span_sem_rrf.get(sum_idx, 0.0), 1.0 / (rrf_k + rank))
+        for rank, idx in enumerate(span_lex, start=1):
+            if idx < len(self.span_retriever.entries):
+                link_id = self.span_retriever.entries[idx].metadata.get("link")
+                sum_idx = self._summary_index_by_link(link_id)
+                if sum_idx is not None:
+                    span_lex_rrf[sum_idx] = max(span_lex_rrf.get(sum_idx, 0.0), 1.0 / (rrf_k + rank))
+
+        all_ids = set(mem_sem_rrf) | set(mem_lex_rrf) | set(span_sem_rrf) | set(span_lex_rrf)
+        scores: List[Tuple[int, float]] = []
+        debug_scores: Dict[str, Any] = {}
+        for idx in all_ids:
+            mem_score = weights["mem_sem_weight"] * mem_sem_rrf.get(idx, 0.0) + weights["mem_lex_weight"] * mem_lex_rrf.get(idx, 0.0)
+            span_score = weights["span_sem_weight"] * span_sem_rrf.get(idx, 0.0) + weights["span_lex_weight"] * span_lex_rrf.get(idx, 0.0)
+            agree_score = sqrt(max(mem_score * span_score, 0.0))
+            final_score = weights["final_mem_weight"] * mem_score + weights["final_span_weight"] * span_score + weights["final_agree_weight"] * agree_score
+            scores.append((idx, final_score))
+            debug_scores[str(idx)] = {"mem_score": mem_score, "span_score": span_score, "final_score": final_score}
+
+        scores.sort(key=lambda x: x[1], reverse=True)
+        top_indices = np.array([idx for idx, _ in scores[:k]], dtype=int)
+        self.last_hybrid_details = {
+            "query": query,
+            "weights": weights,
+            "route_top_k": route_k,
+            "keyword_query": keyword_query,
+            "mem_sem_indices": mem_sem,
+            "mem_lex_indices": mem_lex,
+            "span_sem_indices": span_sem,
+            "span_lex_indices": span_lex,
+            "scores": debug_scores,
+            "top_indices": top_indices.tolist(),
+        }
+        return top_indices
+
+    def _summary_index_by_link(self, link_id: Optional[str]) -> Optional[int]:
+        if not link_id:
+            return None
+        for idx, entry in enumerate(self.retriever.entries):
+            if entry.link == link_id or entry.id == link_id:
+                return idx
+        return None
     
     def analyze_content(
         self,
@@ -204,9 +328,13 @@ class AgenticMemorySystem:
         retrieve_tokens = 0
         answer_tokens = 0
         stage = "light"
+        retrieval_debug: Dict[str, Any] = {}
 
         for _ in range(max_iterations):
-            initial_indices = self.retriever.search(question, k)
+            initial_indices = self.hybrid_search(question, k) if self.enable_hybrid else self.retriever.search(question, k)
+            retrieval_debug["light_indices"] = [int(i) for i in initial_indices.tolist()] if hasattr(initial_indices, "tolist") else [int(i) for i in initial_indices]
+            if self.enable_hybrid:
+                retrieval_debug["light_hybrid"] = self.last_hybrid_details
             summary_text = self._format_summaries(initial_indices) + memory_buffer
 
             tag, answer = self.retrieval_light_memory(question, summary_text)
@@ -216,7 +344,10 @@ class AgenticMemorySystem:
             if tag == 2:
                 stage = "deep"
                 retrieve_tokens += light_prompt_tokens
-                expanded_indices = self.retriever.search(question, k_rough)
+                expanded_indices = self.hybrid_search(question, k_rough) if self.enable_hybrid else self.retriever.search(question, k_rough)
+                retrieval_debug["deep_indices"] = [int(i) for i in expanded_indices.tolist()] if hasattr(expanded_indices, "tolist") else [int(i) for i in expanded_indices]
+                if self.enable_hybrid:
+                    retrieval_debug["deep_hybrid"] = self.last_hybrid_details
                 memory_groups = self._group_summaries(expanded_indices, group_size=50)
                 deep_selected_indices = []
 
@@ -245,6 +376,7 @@ class AgenticMemorySystem:
                     "total_tokens": retrieve_tokens + answer_tokens,
                     "latency_seconds": time.perf_counter() - start_time,
                     "stage": stage
+                    ,"retrieval_debug": retrieval_debug
                 }
                 return answer, retrieved_memory
             question = revised_question
@@ -255,6 +387,7 @@ class AgenticMemorySystem:
             "total_tokens": retrieve_tokens + answer_tokens,
             "latency_seconds": time.perf_counter() - start_time,
             "stage": stage
+            ,"retrieval_debug": retrieval_debug
         }
         return answer, retrieved_memory
 
